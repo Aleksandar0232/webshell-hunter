@@ -140,10 +140,10 @@ MEDIUM_SIGS=(
 )
 
 # Suspicious filenames (regex on basename)
-NAME_SIGS='^(\.[a-z0-9_-]+|[a-f0-9]{8,}|[a-z]{1,2}[0-9]{1,4}|[0-9]{3,}|wp-(conf|conff|confg|config[a-z0-9]+|up|upd|cache|inc|includes|file|files|load[a-z0-9]+|tmp|logs?|admin[a-z0-9]+|login[0-9]+|signup|setting[s]?)|class-wp-[a-z]+-[a-z]*[0-9][a-z0-9]*|xleet|sym|shell|cmd|ws0|wso\d*|c99|r57|alfa|mini|marijuana|indoxploit|adminer|admin\d+|install\d+|xml\d+|config\d+|about\d+|lock360|radio|up)\.php$'
+NAME_SIGS='^(\.[a-z0-9_-]+|[a-f0-9]{8,}|[a-z]{1,2}[0-9]{1,4}|[0-9]{3,}|wp-(conf|conff|confg|config[a-z0-9]+|up|upd|cache|inc|includes|file|files|load[a-z0-9]+|tmp|logs?|admin[a-z0-9]+|login[0-9]+|signup|setting[s]?)|class-wp-[a-z]+-[a-z]*[0-9][a-z0-9]*|xleet|sym|shell|cmd|ws0|wso\d*|c99|r57|alfa|mini|marijuana|indoxploit|adminer|admin\d+|install\d+|xml\d+|config\d+|about\d+|lock360)\.php$'
 # never flag these legit names even if a pattern above would match
 NAME_WHITELIST='^(wp-config|wp-config-sample|wp-load|wp-login|wp-signup|wp-settings|wp-cron|wp-links-opml|wp-mail|up|index|40[0-9]|50[0-9]|class-wp-filesystem-ssh2|class-wp-http-ixr-client|class-wp-recovery-mode-[a-z0-9-]+|class-wp-rest-[a-z0-9-]+|class-wp-image-editor-[a-z0-9-]+|class-wp-sitemaps-[a-z0-9-]+|class-wp-widget-[a-z0-9-]+)\.php$'
-PATH_WHITELIST='/(wp-includes/Text/Diff/Engine/shell\.php|wp-includes/ID3/module\.[a-z.-]+\.php|wp-includes/sodium_compat/|wp-includes/PHPMailer/)'
+PATH_WHITELIST='/(wp-content/plugins/wordfence/|wp-includes/Text/Diff/Engine/shell\.php|wp-includes/ID3/module\.[a-z.-]+\.php|wp-includes/sodium_compat/|wp-includes/PHPMailer/)'
 # plugin/theme/vendor trees have arbitrary file layouts — directory-based heuristics don't apply there
 CODE_TREE_RE='/(wp-content/(plugins|themes|mu-plugins)|wp-includes|wp-admin|vendor|node_modules|bower_components)/'
 
@@ -244,7 +244,7 @@ while IFS= read -r f; do
       rel="$f"; for sp in "${SCAN_PATHS[@]}"; do [[ "$f" == "$sp"/* ]] && { rel="/${f#"$sp"/}"; break; }; done
       grep -qP '/(wp-content/(uploads|cache|upgrade|backups?|w3tc-config|wflogs)|uploads|upload|images|img|files|media|tmp|temp|backups?)/' <<<"$rel" || continue
       grep -qP "$CODE_TREE_RE" <<<"$rel" && continue
-      grep -qP '/wp-content/cache/.*/(cache-|index\.php$)|/wp-content/wflogs/(attack-data|config-[a-z]+|ips|rules|GeoLite2-Country\.mmdb|template)\.php$' <<<"$rel" && continue
+      grep -qP '/wp-content/cache/.*/(cache-|index\.php$)|/wp-content/wflogs/(attack-data|config(-[a-z]+)?|ips|rules|GeoLite2-Country\.mmdb|template)\.php$' <<<"$rel" && continue
       # index.php in uploads that only contains "<?php // Silence is golden" is WordPress default
       if [[ "$(basename "$f")" == "index.php" ]] && grep -qi 'silence is golden' "$f" 2>/dev/null; then continue; fi
       add_hit "$f" "PHP in upload/cache dir" MED
