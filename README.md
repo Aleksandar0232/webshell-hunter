@@ -51,21 +51,23 @@ Run as root.
 - `.user.ini` / `php.ini` with `auto_prepend_file` / `auto_append_file`
 
 **PHP — MEDIUM** (reported; acted on only with `--all`)
-- obfuscation: `gzinflate(base64_decode(`, long hex / `chr()` strings, `$GLOBALS['x'][12]`-style indexing, `goto` spaghetti
-- PHP files inside `uploads/`, `cache/`, `tmp/`, `backup/` …
-- suspicious filenames (`wp-conf.php`, `about.php`, `class-wp-xyz12345.php`, `wso1.php`, `adminer.php` …)
+- obfuscation: `gzinflate(base64_decode(`, hex / `chr()` strings fed to a call, `$GLOBALS['x'][12]`-style indexing, `goto` spaghetti
+- `base64_decode($_POST[...])` (legit in Wordfence and friends, hence MEDIUM)
+- PHP files inside `wp-content/uploads`, `wp-content/cache`, top-level `uploads/`, `tmp/`, `backup/` … (plugin/theme/vendor trees are exempt — they have arbitrary layouts)
+- suspicious filenames (`wp-conf.php`, `about2.php`, `class-wp-xyz12345.php`, `wso1.php`, `adminer.php`, `.hidden.php`, hex names …)
 - code that creates WordPress users or forges auth cookies
 
 **JavaScript — HIGH**
 - `eval(atob(...))`, `new Function(unescape(...))`, `document.write(unescape(...))`
 - encoded `location.href =` redirects
-- hidden iframes (0×0, `display:none`, offscreen)
+- hidden iframes (0×0, `display:none`, offscreen) loading a throwaway-TLD domain, or with `javascript:`/`data:`/encoded `src`
 - cryptominers (CoinHive, cryptonight, jsecoin, …)
 - cookie exfiltration (`new Image().src = ... + document.cookie`)
 - card skimmers (card/cvv fields → `btoa` → `fetch` / `sendBeacon`)
 - hex- or unicode-escaped `eval` / `atob` (`\x65\x76\x61\x6c`), long `String.fromCharCode` chains feeding `eval`
 
 **JavaScript — MEDIUM**
+- hidden iframes loading any external absolute URL
 - `_0x…` obfuscator output that executes, dynamically built `<script src>`
 - scripts loaded from throwaway TLDs (`.tw`, `.xyz`, `.top`, `.icu`, `.sbs`, …)
 - user-agent / referrer-cloaked redirects
@@ -87,6 +89,10 @@ DB findings are report-only; the script never modifies the database.
 **INFO**
 - PHP/JS files modified in the last N days
 - immutable (`chattr +i`) flags on hits — removed automatically before quarantining
+
+## False positives
+
+Signatures are tuned against a clean WordPress core checkout (0 HIGH, 0 MEDIUM) and a real cPanel site running Wordfence, BoldGrid, WP-Optimize, WP Mail SMTP and Query Monitor. Plugin code still trips the odd MEDIUM — that list is meant to be read, not acted on blindly. If a HIGH hit is a false positive, `--restore` puts it back; open an issue with the file so the signature can be tightened.
 
 ## After the scan
 

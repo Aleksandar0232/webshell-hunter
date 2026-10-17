@@ -119,7 +119,6 @@ HIGH_SIGS=(
   'move_uploaded_file\s*\(\s*\$_FILES\[[^\]]+\]\[.tmp_name.\]\s*,\s*\$_(GET|POST|REQUEST)'
   '@?\$_(GET|POST|REQUEST|COOKIE)\[[^\]]+\]\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)'     # $_GET[a]($_GET[b])
   'array_map\s*\(\s*["\x27](assert|system|eval|passthru)["\x27]'
-  'base64_decode\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)'
   'file_put_contents\s*\(\s*\$_(GET|POST|REQUEST)\[[^\]]+\]\s*,\s*(\$_(GET|POST|REQUEST)|base64_decode)'
   '(ini_set\s*\(\s*["\x27](display_errors|error_log)["\x27]|error_reporting\s*\(\s*0\s*\))\s*;\s*@?\$\w+\s*=\s*\$_(GET|POST|COOKIE)'
   'create_function\s*\(\s*["\x27]["\x27]\s*,\s*(base64_decode|gzinflate|\$_)'
@@ -127,21 +126,26 @@ HIGH_SIGS=(
 
 # MEDIUM: obfuscation / suspicious constructs; common in malware, occasionally in legit code.
 MEDIUM_SIGS=(
+  'base64_decode\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)'                                                 # decoding request input (legit in Wordfence etc.)
   '(gzinflate|gzuncompress|str_rot13)\s*\(\s*base64_decode\s*\('
   'base64_decode\s*\(\s*["\x27][A-Za-z0-9+/=]{200,}["\x27]\s*\)'
-  '(\\x[0-9a-fA-F]{2}){12,}'                                 # long hex-escaped strings
+  '(\\x[0-9a-fA-F]{2}){12,}[^\n]{0,300}(eval|assert|system|passthru|shell_exec|base64_decode|create_function|\$\w+\s*\()'  # hex-escaped string fed to a call
   '(chr\s*\(\s*\d+\s*\)\s*\.\s*){8,}'                        # chr(1).chr(2)... concat
   '\$GLOBALS\[\s*["\x27]\w+["\x27]\s*\]\s*\[\s*\d+\s*\]\s*\.'  # $GLOBALS['x'][12].$GLOBALS['x'][5]
   'goto\s+\w+;\s*\w+:\s*' 
-  '(assert|eval)\s*\(\s*(\$\w+|gzinflate|base64_decode|str_rot13|strrev)'
+  'eval\s*\(\s*(gzinflate|gzuncompress|base64_decode|str_rot13|strrev|hex2bin)\s*\(|assert\s*\(\s*\$\w+\s*\)'
   'extract\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)'
-  'php_uname|posix_getpwuid|safe_mode|disable_functions|open_basedir|@set_time_limit\s*\(\s*0\s*\)'
   'wp_set_auth_cookie\s*\(\s*1\s*\)|wp_insert_user\s*\(\s*array\s*\(\s*["\x27]user_login'
   '<\?php\s+@?(eval|assert|include|require)(_once)?\s*\(?\s*\$_'
 )
 
 # Suspicious filenames (regex on basename)
-NAME_SIGS='^(\.?[a-z0-9]{1,3}|\.[a-z]+|[a-f0-9]{8,}|wp-(conf|up|cache|inc|file|load)[a-z0-9_-]*|class-wp-[a-z]*-[a-z0-9]{5,}|about|lock|xleet|radio|sym|up|shell|cmd|ws0|wso\d*|c99|r57|alfa|mini|marijuana|indoxploit|adminer|admin\d+|install\d+|xml\d+|config\d+|link|wp-login\d+)\.php$'
+NAME_SIGS='^(\.[a-z0-9_-]+|[a-f0-9]{8,}|[a-z]{1,2}[0-9]{1,4}|[0-9]{3,}|wp-(conf|conff|confg|config[a-z0-9]+|up|upd|cache|inc|includes|file|files|load[a-z0-9]+|tmp|logs?|admin[a-z0-9]+|login[0-9]+|signup|setting[s]?)|class-wp-[a-z]+-[a-z]*[0-9][a-z0-9]*|xleet|sym|shell|cmd|ws0|wso\d*|c99|r57|alfa|mini|marijuana|indoxploit|adminer|admin\d+|install\d+|xml\d+|config\d+|about\d+|lock360|radio|up)\.php$'
+# never flag these legit names even if a pattern above would match
+NAME_WHITELIST='^(wp-config|wp-config-sample|wp-load|wp-login|wp-signup|wp-settings|wp-cron|wp-links-opml|wp-mail|up|index|40[0-9]|50[0-9]|class-wp-filesystem-ssh2|class-wp-http-ixr-client|class-wp-recovery-mode-[a-z0-9-]+|class-wp-rest-[a-z0-9-]+|class-wp-image-editor-[a-z0-9-]+|class-wp-sitemaps-[a-z0-9-]+|class-wp-widget-[a-z0-9-]+)\.php$'
+PATH_WHITELIST='/(wp-includes/Text/Diff/Engine/shell\.php|wp-includes/ID3/module\.[a-z.-]+\.php|wp-includes/sodium_compat/|wp-includes/PHPMailer/)'
+# plugin/theme/vendor trees have arbitrary file layouts — directory-based heuristics don't apply there
+CODE_TREE_RE='/(wp-content/(plugins|themes|mu-plugins)|wp-includes|wp-admin|vendor|node_modules|bower_components)/'
 
 # ---------- JavaScript signatures ----------
 # Scanned in .js files AND inside .php/.html/.htm (inline <script> injections).
@@ -150,7 +154,8 @@ JS_HIGH_SIGS=(
   'new\s+Function\s*\(\s*(atob|unescape|decodeURIComponent)\s*\('
   'document\.write(ln)?\s*\(\s*(unescape|atob|decodeURIComponent|String\.fromCharCode)\s*\('
   'window\.location(\.href|\.replace|\.assign)?\s*(=|\()\s*(atob|unescape|decodeURIComponent)\s*\('     # encoded redirect
-  '<iframe[^>]*\s(width|height)\s*=\s*["\x27]?\s*[01]\s*(px)?["\x27]?[^>]*>|<iframe[^>]*style\s*=\s*["\x27][^"\x27]*(display\s*:\s*none|visibility\s*:\s*hidden|position\s*:\s*absolute\s*;\s*(left|top)\s*:\s*-\d{3,})'  # hidden iframe
+  '<iframe(?=[^>]*(\s(width|height)\s*=\s*["\x27]?\s*[01]\s*(px)?["\x27]?|display\s*:\s*none|visibility\s*:\s*hidden|(left|top)\s*:\s*-\d{3,}))[^>]*\ssrc\s*=\s*["\x27]?(https?:)?//[^"\x27\s>]+\.(tw|top|xyz|club|icu|cfd|sbs|buzz|gq|ml|cf|tk|ga|rest|pw|bar|monster|quest|skin|boats|lol|zip|mov)(/|["\x27\s>])'  # hidden iframe from throwaway TLD
+  '<iframe[^>]*\ssrc\s*=\s*["\x27]?\s*(javascript:(?!\s*(&quot;|["\x27]|false|void|;|$))[^"\x27>]{3,}|data:text/html|["\x27]\s*\+\s*(atob|unescape|decodeURIComponent|String\.fromCharCode))'   # iframe with js:/data:/encoded src
   'coinhive|CoinHive|coin-hive|cryptonight|CryptoNight|minero\.cc|webminepool|crypto-loot|cryptoloot|jsecoin|authedmine|deepMiner|CoinImp|monerominer|WMP\.start\s*\('   # miners
   '(new\s+Image\s*\(\s*\)|\.src)\s*[=.][^;\n]{0,120}(document\.cookie|localStorage)'                   # cookie exfil
   '(cc[_-]?num|card[_-]?number|cardnumber|cvv|cvc|expir)[^\n]{0,200}(btoa|encodeURIComponent)\s*\([^\n]{0,200}(fetch|XMLHttpRequest|\.src\s*=|sendBeacon)'  # skimmer
@@ -160,6 +165,7 @@ JS_HIGH_SIGS=(
   '\\u0065\\u0076\\u0061\\u006c|\\u0061\\u0074\\u006f\\u0062'                                      # unicode-escaped "eval"/"atob"
 )
 JS_MED_SIGS=(
+  '<iframe(?=[^>]*(\s(width|height)\s*=\s*["\x27]?\s*[01]\s*(px)?["\x27]?|display\s*:\s*none|visibility\s*:\s*hidden|(left|top)\s*:\s*-\d{3,}))[^>]*\ssrc\s*=\s*["\x27]?(https?:)?//[a-z0-9.-]+\.[a-z]{2,}/'   # hidden iframe loading an external absolute URL
   '_0x[a-f0-9]{4,}\s*(\(|\[)[^\n]{0,300}(eval|Function|location|document\.write|createElement\s*\(\s*["\x27]script)'  # javascript-obfuscator output doing exec
   'String\.fromCharCode\s*\(\s*\d+\s*(,\s*\d+\s*){20,}'
   '(\\u00[0-9a-fA-F]{2}){16,}'
@@ -226,7 +232,9 @@ xargs -a "$OTHER_LIST" -d '\n' -r grep -lP '<\?php|<\?=\s*\$|<script\s+language\
       if grep -qP '(eval|assert|system|passthru|shell_exec|base64_decode)\s*\(' "$f" 2>/dev/null; then
         add_hit "$f" "PHP code with exec/eval inside non-PHP file" HIGH
       else
-        add_hit "$f" "PHP tag inside non-PHP file" MED
+        case "${f##*.}" in
+          ico|jpg|jpeg|png|gif|woff|ttf|pdf|dat) add_hit "$f" "PHP tag inside non-PHP file" MED ;;
+        esac
       fi
     done
 
@@ -234,8 +242,9 @@ xargs -a "$OTHER_LIST" -d '\n' -r grep -lP '<\?php|<\?=\s*\$|<script\s+language\
 echo "[*] Checking PHP files in upload/cache directories..."
 while IFS= read -r f; do
       rel="$f"; for sp in "${SCAN_PATHS[@]}"; do [[ "$f" == "$sp"/* ]] && { rel="/${f#"$sp"/}"; break; }; done
-      grep -qP '/(wp-content/uploads|wp-content/cache|wp-content/upgrade|images|img|uploads|upload|files|media|cache|tmp|temp|backup|backups|assets)/' <<<"$rel" || continue
-      grep -qP '/(cache|wp-content/cache)/.*/(cache-|index\.php$)' <<<"$rel" && continue
+      grep -qP '/(wp-content/(uploads|cache|upgrade|backups?|w3tc-config|wflogs)|uploads|upload|images|img|files|media|tmp|temp|backups?)/' <<<"$rel" || continue
+      grep -qP "$CODE_TREE_RE" <<<"$rel" && continue
+      grep -qP '/wp-content/cache/.*/(cache-|index\.php$)|/wp-content/wflogs/(attack-data|config-[a-z]+|ips|rules|GeoLite2-Country\.mmdb|template)\.php$' <<<"$rel" && continue
       # index.php in uploads that only contains "<?php // Silence is golden" is WordPress default
       if [[ "$(basename "$f")" == "index.php" ]] && grep -qi 'silence is golden' "$f" 2>/dev/null; then continue; fi
       add_hit "$f" "PHP in upload/cache dir" MED
@@ -245,6 +254,8 @@ done < "$PHP_LIST"
 echo "[*] Checking suspicious filenames..."
 while IFS= read -r f; do
   bn=$(basename "$f")
+  [[ "$bn" =~ $NAME_WHITELIST ]] && continue
+  [[ "$f" =~ $PATH_WHITELIST ]] && continue
   if [[ "$bn" =~ $NAME_SIGS ]]; then add_hit "$f" "suspicious filename" MED; fi
 done < "$PHP_LIST"
 
@@ -283,6 +294,7 @@ if [[ $JS_SCAN -eq 1 ]]; then
   # .js files in upload dirs (WordPress blocks .js uploads by default)
   while IFS= read -r f; do
     rel="$f"; for sp in "${SCAN_PATHS[@]}"; do [[ "$f" == "$sp"/* ]] && { rel="/${f#"$sp"/}"; break; }; done
+    grep -qP "$CODE_TREE_RE" <<<"$rel" && continue
     grep -qP '/(wp-content/uploads|uploads|upload|media|files)/.*\.(js|mjs)$' <<<"$rel" && add_hit "$f" "JS file in upload dir" MED
   done < "$JS_LIST"
 
